@@ -1,78 +1,63 @@
 require('dotenv').config()
+const express = require('express')
+const {Telegraf, session, Scenes} = require('telegraf')
+const actions = require('./actions/')
 
-const {Telegraf, Markup} = require('telegraf')
 const texts = require("./helpers/texts");
-const { links } = texts;
+const commands = require("./helpers/commands")
+const inlineMenu = require("./helpers/inlineMenu")
+const backBtn = require("./helpers/backBtn");
+const { bot_Token } = require("./config");
 
-const commands = {
-	start: 'start',
-	help: 'help',
-	helpUs: 'helpUs',
-	whoWeAre: 'whoWeAre',
-	contact: 'contact'
-}
+const app = express();
+// scene
+const {NEWS_SCENE, newsScene} = require("./scenes/news");
 
-const buttons = {
-	[commands.helpUs]: 'Підтримати нас',
-	[commands.whoWeAre]: 'Хто Ми?',
-	[commands.contact]: 'Зв’язок з нами'
-}
+const bot = new Telegraf(bot_Token)
+const stage = new Scenes.Stage([newsScene])
 
-const menu = Markup.keyboard([
-	[{text: buttons[commands.whoWeAre], callback_data: commands.whoWeAre}],
-	[{text: buttons[commands.contact], callback_data: commands.contact}],
-	[{text: buttons[commands.helpUs], callback_data: commands.helpUs}]
-])
+bot.use(session())
+bot.use(stage.middleware())
+
+bot.hears(NEWS_SCENE)
+bot.on('new_cannel_members', (ctx) => console.log(ctx.message.new_chat_members))
 
 
-
-const keyboardLinks = Markup.inlineKeyboard([
-	[Markup.button.url(links.donate.title, links.donate.url)],
-	[Markup.button.url(links.youtube.title, links.youtube.url)],
-	[Markup.button.url(links.tg.title, links.tg.url)],
-	[Markup.button.url(links.twitch.title, links.twitch.url)],
-  [Markup.button.url(links.instaD.title, links.instaD.url)],
-	[Markup.button.url(links.tiktokD.title, links.tiktokD.url)],
-	[Markup.button.url(links.twitterD.title, links.twitterD.url)],
-	
-	[Markup.button.url(links.instaK.title, links.instaK.url)],
-	[Markup.button.url(links.tiktokK.title, links.tiktokK.url)],
-	[Markup.button.url(links.fbK.title, links.fbK.url)],
-	[Markup.button.url(links.twitterK.title, links.twitterK.url)],
-])
-
-const bot = new Telegraf(process.env.BOT_TOKEN)
-
-bot.start((ctx) => ctx.reply(texts.start, menu)
-)
+bot.start((ctx) => ctx.reply(texts.start, inlineMenu))
 
 bot.help((ctx) => ctx.reply(
 	`/${commands.start} - команда для запуску Бота \n` +
-	`/${commands.help} - побачити всі команди \n`))
+	`/${commands.help} - побачити всі команди \n` +
+	`/${commands.helpUs} - отримати реквізити \n` +
+	`/${commands.whoWeAre} - коротко про нас \n` +
+	`/${commands.contact} - посилання на наші ресурси \n` +
+	`/${commands.sendNews} - поділитися з нами новиною \n`
+))
 
+// render actions
+Object.entries(actions).forEach(([key, cb]) => {
+	const isBackBtn = key === commands.back_to_menu
+	
+	bot.action(key, async (ctx) => {
+		await cb(ctx, isBackBtn ? inlineMenu : backBtn);
+	})
+	bot.command(key, ctx => cb(ctx, backBtn))
+});
 
+process.on('uncaughtException', function (error) {
+	console.log("\x1b[31m", "Exception: ", error, "\x1b[0m");
+});
 
-bot.on('text', async (ctx) => {
-	const { text } =  ctx.update.message;
-	console.log(text, commands.whoWeAre)
-	switch (text) {
-		case buttons[commands.whoWeAre]:
-			await ctx.reply(texts.whoWeAre + texts.whatWeDid)
-			await ctx.replyWithPhoto('https://photos.app.goo.gl/hYbi55rCjK28Kg1A6')
-			break;
-		case buttons[commands.helpUs]:
-			await ctx.reply(texts.requisites, menu)
-			break;
-		case buttons[commands.contact]:
-			await ctx.reply('силки:', keyboardLinks, menu)
-			break;
-	}
+bot.launch().then(() => {
+	console.log('started')
+}).catch(err => {
+	console.error(err);
+});
+
+app.get('/', (req, res) => {
+	res.send('Bot is working!')
 })
 
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
-
-console.log('started')
-
-bot.launch()
+app.listen(process.env.PORT || 8080, () => {
+	console.log('listening port ' + process.env.PORT || 8080)
+})
